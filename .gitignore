@@ -1,0 +1,130 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+myenv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.suo
+*.user
+*.sln.docstates
+
+# Project specific
+profiles/
+output_files/
+*.log
+*.txt
+!requirements.txt
+!README.md
+
+# OS
+Thumbs.db
+.directory
+*.bak
+*.tmp
+
+# PyQt5
+*.pyc
+*.qmlc
+*.jsc
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environment
+myenv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Backup files
+*.backup
+*.old
+*.orig
+
+# Compiled files
+*.class
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# User-specific files
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build artifacts
+/build/
+/dist/
+/*.egg-info/
+
+# Profiling data
+*.prof
+*.lprof
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
+
+# Sphinx documentation
+docs/_build/
+
+# PyInstaller
+*.spec
+*.manifest
+*.exe
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pytype
+.pytype/
+
+# Cython debug symbols
+cython_debug/
