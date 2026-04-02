@@ -5,9 +5,11 @@
 """
 
 import os
+import json
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QFileDialog, QMessageBox, QApplication
+    QSplitter, QFileDialog, QMessageBox, QApplication,
+    QButtonGroup, QRadioButton, QLabel, QPushButton
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
@@ -26,18 +28,19 @@ class SplitWorker(QThread):
     error = pyqtSignal(str)  # error_message
     log = pyqtSignal(str)  # log message
     
-    def __init__(self, filepath, output_dir, settings):
+    def __init__(self, filepath, output_dir, settings, mode='split'):
         super().__init__()
         self.filepath = filepath
         self.output_dir = output_dir
         self.settings = settings
+        self.mode = mode  # 'split' или 'clean'
     
     def run(self):
         """Запуск обработки"""
         try:
             splitter = FileSplitter()
             
-            # Настраиваем процессор, передавая словарь настроек
+            # Настраиваем процессор
             splitter.set_processor_config(settings=self.settings)
             
             # Загружаем файл
@@ -53,22 +56,36 @@ class SplitWorker(QThread):
                 for sample in invisible_info['samples']:
                     self.log.emit(f"   - {sample['name']} ({sample['code']})")
             
-            # Разбиваем текст
-            sections = splitter.split_text(text)
-            
-            if not sections:
-                self.error.emit("В тексте не найдено маркеров")
-                return
-            
-            # Сохраняем разделы
-            created_files = splitter.save_sections(
-                sections,
-                self.filepath,
-                self.output_dir,
-                self.progress.emit
-            )
-            
-            self.finished.emit(created_files)
+            if self.mode == 'split':
+                # Режим разбиения на файлы
+                sections = splitter.split_text(text)
+                
+                if not sections:
+                    self.error.emit("В тексте не найдено маркеров")
+                    return
+                
+                # Сохраняем разделы
+                created_files = splitter.save_sections(
+                    sections,
+                    self.filepath,
+                    self.output_dir,
+                    self.progress.emit
+                )
+                self.finished.emit(created_files)
+                
+            else:  # mode == 'clean'
+                # Режим простой очистки
+                cleaned_text = splitter.clean_whole_file(text)
+                
+                # Сохраняем очищенный текст
+                output_file = splitter.save_cleaned_file(
+                    cleaned_text,
+                    self.filepath,
+                    self.output_dir
+                )
+                
+                self.progress.emit(1, 1, output_file)
+                self.finished.emit([output_file])
             
         except Exception as e:
             self.error.emit(str(e))
@@ -82,12 +99,13 @@ class MainWindow(QMainWindow):
         self.current_file = None
         self.output_dir = None
         self.worker = None
+        self.current_mode = 'split'  # 'split' или 'clean'
         
         self.init_ui()
         
     def init_ui(self):
         """Инициализация интерфейса"""
-        self.setWindowTitle("Text Splitter - Разбиение текста на файлы")
+        self.setWindowTitle("Text Splitter - Разбиение и очистка текста")
         self.setGeometry(100, 100, 1200, 800)
         
         # Центральный виджет
@@ -100,6 +118,10 @@ class MainWindow(QMainWindow):
         # Верхняя панель (управление файлами)
         top_panel = self.create_top_panel()
         main_layout.addLayout(top_panel)
+        
+        # Панель выбора режима
+        mode_panel = self.create_mode_panel()
+        main_layout.addLayout(mode_panel)
         
         # Основной сплиттер (горизонтальный)
         splitter = QSplitter(Qt.Horizontal)
@@ -133,6 +155,30 @@ class MainWindow(QMainWindow):
         # Статус бар
         self.statusBar().showMessage("Готов")
     
+    def create_mode_panel(self):
+        """Создание панели выбора режима"""
+        layout = QHBoxLayout()
+        
+        layout.addWidget(QLabel("Режим работы:"))
+        
+        # Группа радио-кнопок
+        self.mode_group = QButtonGroup(self)
+        
+        self.split_radio = QRadioButton("Разбить на файлы")
+        self.split_radio.setChecked(True)
+        self.split_radio.toggled.connect(self.on_mode_changed)
+        self.mode_group.addButton(self.split_radio)
+        layout.addWidget(self.split_radio)
+        
+        self.clean_radio = QRadioButton("Простая очистка (без разбиения)")
+        self.clean_radio.toggled.connect(self.on_mode_changed)
+        self.mode_group.addButton(self.clean_radio)
+        layout.addWidget(self.clean_radio)
+        
+        layout.addStretch()
+        
+        return layout
+    
     def create_top_panel(self):
         """Создание верхней панели"""
         layout = QHBoxLayout()
@@ -164,7 +210,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         
         # Кнопка запуска
-        self.run_btn = self.create_button("Разбить на файлы", self.run_split)
+        self.run_btn = self.create_button("Выполнить", self.run_split)
         self.run_btn.setEnabled(False)
         layout.addWidget(self.run_btn)
         
@@ -180,17 +226,28 @@ class MainWindow(QMainWindow):
     
     def create_button(self, text, callback):
         """Создание кнопки"""
-        from PyQt5.QtWidgets import QPushButton
         btn = QPushButton(text)
         btn.clicked.connect(callback)
         return btn
     
     def create_label(self, text):
         """Создание метки"""
-        from PyQt5.QtWidgets import QLabel
         label = QLabel(text)
         label.setStyleSheet("QLabel { color: #666; }")
         return label
+    
+    def on_mode_changed(self):
+        """Обработчик изменения режима"""
+        if self.split_radio.isChecked():
+            self.current_mode = 'split'
+            self.statusBar().showMessage("Режим: разбиение на файлы по маркерам")
+        else:
+            self.current_mode = 'clean'
+            self.statusBar().showMessage("Режим: простая очистка текста (без разбиения)")
+        
+        # Обновляем предпросмотр
+        if self.current_file:
+            self.on_settings_changed()
     
     def create_cleanup_profile(self):
         """Создать профиль агрессивной очистки"""
@@ -275,7 +332,7 @@ class MainWindow(QMainWindow):
                     msg.setIcon(QMessageBox.Warning)
                     msg.setWindowTitle("Обнаружены скрытые символы")
                     msg.setText("В загруженном файле обнаружены скрытые символы!\n\n"
-                                "Они могут мешать правильному разбиению текста.\n\n"
+                                "Они могут мешать правильной обработке текста.\n\n"
                                 f"Найдено:\n")
                     for sample in invisible_info['samples'][:5]:
                         msg.setText(msg.text() + f"• {sample['name']} ({sample['code']})\n")
@@ -333,15 +390,21 @@ class MainWindow(QMainWindow):
                 # Загружаем текст
                 text = splitter.load_file(self.current_file)
                 
-                # Разбиваем и показываем предпросмотр
-                sections = splitter.split_text(text)
-                self.preview_widget.set_sections(sections)
+                if self.current_mode == 'split':
+                    # Разбиваем и показываем предпросмотр
+                    sections = splitter.split_text(text)
+                    self.preview_widget.set_sections(sections)
+                else:
+                    # Простая очистка - показываем очищенный текст
+                    cleaned_text = splitter.clean_whole_file(text)
+                    # Создаем временный список для отображения
+                    self.preview_widget.set_sections([("Очищенный текст", cleaned_text)])
                 
             except Exception as e:
                 self.log_widget.add_message(f"Ошибка предпросмотра: {e}")
     
     def run_split(self):
-        """Запуск разбиения"""
+        """Запуск обработки"""
         if not self.current_file or not self.output_dir:
             return
         
@@ -356,7 +419,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Обработка...")
         
         # Создаем и запускаем рабочий поток
-        self.worker = SplitWorker(self.current_file, self.output_dir, settings)
+        self.worker = SplitWorker(
+            self.current_file, 
+            self.output_dir, 
+            settings,
+            mode=self.current_mode
+        )
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)
@@ -371,15 +439,20 @@ class MainWindow(QMainWindow):
     def on_finished(self, created_files):
         """Обработчик завершения"""
         self.run_btn.setEnabled(True)
-        self.statusBar().showMessage(f"Готово! Создано файлов: {len(created_files)}")
-        self.log_widget.add_message(f"Обработка завершена. Создано {len(created_files)} файлов.")
+        
+        if self.current_mode == 'split':
+            self.statusBar().showMessage(f"Готово! Создано файлов: {len(created_files)}")
+            self.log_widget.add_message(f"Обработка завершена. Создано {len(created_files)} файлов.")
+            message = f"Разбиение завершено!\nСоздано файлов: {len(created_files)}\nПапка: {self.output_dir}"
+        else:
+            self.statusBar().showMessage(f"Готово! Очищенный текст сохранен")
+            self.log_widget.add_message(f"Очистка завершена. Файл сохранен: {os.path.basename(created_files[0])}")
+            message = f"Очистка текста завершена!\nФайл сохранен: {os.path.basename(created_files[0])}\nПапка: {self.output_dir}"
         
         QMessageBox.information(
             self,
             "Завершено",
-            f"Разбиение завершено!\nСоздано файлов: {len(created_files)}\n"
-            f"Папка: {self.output_dir}\n\n"
-            f"Все файлы сохранены в кодировке UTF-8"
+            message
         )
     
     def on_error(self, error_message):

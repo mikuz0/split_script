@@ -318,6 +318,33 @@ class TextProcessor:
         
         return text
     
+    def clean_whole_text(self, text, log_callback=None):
+        """
+        Очистка всего текста без разбиения на разделы
+        (не удаляет маркеры, только скобки, символы и пробелы)
+        
+        Args:
+            text: исходный текст
+            log_callback: функция для логирования
+            
+        Returns:
+            очищенный текст
+        """
+        # Шаг 0: Удаление скрытых символов
+        text = self.remove_invisible_chars(text, log_callback)
+        
+        # Шаг 1: Удаляем содержимое в скобках
+        if self.remove_brackets:
+            text = self.remove_parentheses_content(text)
+        
+        # Шаг 2: Удаляем указанные символы
+        text = self.remove_specific_chars(text)
+        
+        # Шаг 3: Очищаем текст (пробелы и пунктуация)
+        text = self.clean_text(text)
+        
+        return text
+    
     def find_markers(self, text):
         """
         Находит все маркеры в тексте

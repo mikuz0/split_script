@@ -139,12 +139,49 @@ class FileSplitter:
             # Извлекаем содержимое
             raw_content = text[start_pos:end_pos]
             
-            # Очищаем содержимое (теперь с правильным порядком)
+            # Очищаем содержимое (с удалением маркеров)
             cleaned_content = self.text_processor.clean_text_section(raw_content)
             
             sections.append((section_num, cleaned_content))
         
         return sections
+    
+    def clean_whole_file(self, text):
+        """
+        Очищает весь текст без разбиения (сохраняет маркеры)
+        
+        Args:
+            text: исходный текст
+            
+        Returns:
+            очищенный текст
+        """
+        return self.text_processor.clean_whole_text(text)
+    
+    def save_cleaned_file(self, cleaned_text, input_filepath, output_dir):
+        """
+        Сохраняет очищенный текст в файл
+        
+        Args:
+            cleaned_text: очищенный текст
+            input_filepath: путь к исходному файлу
+            output_dir: директория для сохранения
+            
+        Returns:
+            путь к сохраненному файлу
+        """
+        # Создаем директорию, если её нет
+        os.makedirs(output_dir, exist_ok=True)
+        
+        base_name = self.get_base_filename(input_filepath)
+        filename = f"{base_name}_cleaned.txt"
+        filepath = os.path.join(output_dir, filename)
+        
+        # Сохраняем файл в UTF-8 без BOM
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(cleaned_text)
+        
+        return filepath
     
     def save_sections(self, sections, input_filepath, output_dir, callback=None):
         """
@@ -172,7 +209,6 @@ class FileSplitter:
             filepath = os.path.join(output_dir, filename)
             
             # Сохраняем файл в UTF-8 без BOM
-            # Windows отлично работает с UTF-8 без BOM в современных версиях
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
             
