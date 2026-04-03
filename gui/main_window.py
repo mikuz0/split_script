@@ -29,12 +29,13 @@ class SplitWorker(QThread):
     error = pyqtSignal(str)
     log = pyqtSignal(str)
     
-    def __init__(self, filepath, output_dir, settings, mode='split'):
+    def __init__(self, filepath, output_dir, settings, mode='split', manual_sections=None):
         super().__init__()
         self.filepath = filepath
         self.output_dir = output_dir
         self.settings = settings
         self.mode = mode
+        self.manual_sections = manual_sections  # Предварительно отредактированные разделы
     
     def run(self):
         try:
@@ -42,39 +43,58 @@ class SplitWorker(QThread):
             
             splitter.set_processor_config(settings=self.settings)
             
-            split_config = self.settings.get('split_config', {})
-            method = split_config.get('method', 'regex')
-            
-            if method == 'manual':
-                splitter.set_split_config(
-                    method='manual',
-                    markers=split_config.get('markers', []),
-                    keep_markers=split_config.get('keep_markers', False),
-                    case_sensitive=split_config.get('case_sensitive', False)
-                )
-            elif method == 'length':
-                splitter.set_split_config(
-                    method='length',
-                    length=split_config.get('length', 5000),
-                    unit=split_config.get('unit', 'chars'),
-                    smart=split_config.get('smart', True),
-                    keep_paragraphs=split_config.get('keep_paragraphs', True)
-                )
-            else:
-                splitter.set_split_config(method='regex')
-            
-            text = splitter.load_file(self.filepath)
-            
-            processor = TextProcessor()
-            processor.set_remove_invisible(True)
-            invisible_info = processor.get_invisible_chars_info(text)
-            
-            if invisible_info['has_invisible']:
-                self.log.emit("⚠️ ВНИМАНИЕ: Обнаружены скрытые символы в тексте!")
-                for sample in invisible_info['samples']:
-                    self.log.emit(f"   - {sample['name']} ({sample['code']})")
-            
             if self.mode == 'split':
+                # Если есть вручную отредактированные разделы, используем их
+                if self.manual_sections:
+                    # Очищаем каждый раздел в соответствии с настройками
+                    cleaned_sections = []
+                    for i, (num, content) in enumerate(self.manual_sections):
+                        cleaned_content = splitter.text_processor.clean_text_section(content, self.log.emit)
+                        cleaned_sections.append((i + 1, cleaned_content))
+                    
+                    # Сохраняем разделы
+                    created_files = splitter.save_sections(
+                        cleaned_sections,
+                        self.filepath,
+                        self.output_dir,
+                        self.progress.emit
+                    )
+                    self.finished.emit(created_files)
+                    return
+                
+                # Иначе выполняем автоматическое разбиение
+                split_config = self.settings.get('split_config', {})
+                method = split_config.get('method', 'regex')
+                
+                if method == 'manual':
+                    splitter.set_split_config(
+                        method='manual',
+                        markers=split_config.get('markers', []),
+                        keep_markers=split_config.get('keep_markers', False),
+                        case_sensitive=split_config.get('case_sensitive', False)
+                    )
+                elif method == 'length':
+                    splitter.set_split_config(
+                        method='length',
+                        length=split_config.get('length', 5000),
+                        unit=split_config.get('unit', 'chars'),
+                        smart=split_config.get('smart', True),
+                        keep_paragraphs=split_config.get('keep_paragraphs', True)
+                    )
+                else:
+                    splitter.set_split_config(method='regex')
+                
+                text = splitter.load_file(self.filepath)
+                
+                processor = TextProcessor()
+                processor.set_remove_invisible(True)
+                invisible_info = processor.get_invisible_chars_info(text)
+                
+                if invisible_info['has_invisible']:
+                    self.log.emit("⚠️ ВНИМАНИЕ: Обнаружены скрытые символы в тексте!")
+                    for sample in invisible_info['samples']:
+                        self.log.emit(f"   - {sample['name']} ({sample['code']})")
+                
                 sections = splitter.split_text(text, clean_callback=self.log.emit)
                 
                 if not sections:
@@ -89,7 +109,19 @@ class SplitWorker(QThread):
                 )
                 self.finished.emit(created_files)
                 
-            else:
+            else:  # mode == 'clean'
+                splitter.set_split_config(method='regex')
+                text = splitter.load_file(self.filepath)
+                
+                processor = TextProcessor()
+                processor.set_remove_invisible(True)
+                invisible_info = processor.get_invisible_chars_info(text)
+                
+                if invisible_info['has_invisible']:
+                    self.log.emit("⚠️ ВНИМАНИЕ: Обнаружены скрытые символы в тексте!")
+                    for sample in invisible_info['samples']:
+                        self.log.emit(f"   - {sample['name']} ({sample['code']})")
+                
                 cleaned_text = splitter.clean_whole_file(text, clean_callback=self.log.emit)
                 output_file = splitter.save_cleaned_file(
                     cleaned_text,
@@ -112,7 +144,8 @@ class MainWindow(QMainWindow):
         self.output_dir = None
         self.worker = None
         self.current_mode = 'split'
-        self.current_sections = None
+        self.current_sections = None  # Хранит текущие разделы (авто или ручные)
+        self.has_manual_edits = False  # Флаг, что были ручные правки
         
         self.init_ui()
         
@@ -206,6 +239,10 @@ class MainWindow(QMainWindow):
         self.manual_edit_btn.setEnabled(False)
         layout.addWidget(self.manual_edit_btn)
         
+        self.reset_manual_btn = self.create_button("🔄 Сбросить ручную разбивку", self.reset_manual_split)
+        self.reset_manual_btn.setEnabled(False)
+        layout.addWidget(self.reset_manual_btn)
+        
         self.run_btn = self.create_button("Выполнить", self.run_split)
         self.run_btn.setEnabled(False)
         layout.addWidget(self.run_btn)
@@ -257,9 +294,19 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Не удалось открыть редактор: {e}")
     
     def on_sections_updated(self, new_sections):
+        """Обработчик обновления разделов из редактора"""
         self.current_sections = new_sections
+        self.has_manual_edits = True
         self.preview_widget.set_sections(new_sections)
         self.log_widget.add_message("Границы разделов обновлены вручную")
+        self.reset_manual_btn.setEnabled(True)
+    
+    def reset_manual_split(self):
+        """Сбросить ручную разбивку и вернуться к автоматической"""
+        self.has_manual_edits = False
+        self.on_settings_changed()  # Пересоздаем автоматические разделы
+        self.log_widget.add_message("Ручная разбивка сброшена, используется автоматическая")
+        self.reset_manual_btn.setEnabled(False)
     
     def create_cleanup_profile(self):
         profile_name = "Очистка от мусора"
@@ -311,6 +358,8 @@ class MainWindow(QMainWindow):
         if filepath:
             self.current_file = filepath
             self.file_path_label.setText(os.path.basename(filepath))
+            self.has_manual_edits = False
+            self.reset_manual_btn.setEnabled(False)
             self.statusBar().showMessage(f"Загружен файл: {filepath}")
             
             try:
@@ -338,6 +387,7 @@ class MainWindow(QMainWindow):
                 
                 self.preview_widget.set_original_text(text)
                 self.check_run_enabled()
+                self.on_settings_changed()  # Запускаем предпросмотр
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить файл: {e}")
     
@@ -358,12 +408,18 @@ class MainWindow(QMainWindow):
     def check_run_enabled(self):
         enabled = self.current_file is not None and self.output_dir is not None
         self.run_btn.setEnabled(enabled)
-        self.manual_edit_btn.setEnabled(enabled and self.current_mode == 'split')
+        self.manual_edit_btn.setEnabled(enabled and self.current_mode == 'split' and self.current_sections is not None)
     
     def on_settings_changed(self):
         """Обработчик изменения настроек"""
         if self.current_file:
             try:
+                # Если есть ручные правки, не пересоздаем автоматические разделы
+                if self.has_manual_edits:
+                    self.preview_widget.set_sections(self.current_sections)
+                    self.manual_edit_btn.setEnabled(True)
+                    return
+                
                 splitter = FileSplitter()
                 settings = self.settings_panel.get_settings()
                 
@@ -419,13 +475,18 @@ class MainWindow(QMainWindow):
         self.log_widget.clear()
         self.run_btn.setEnabled(False)
         self.manual_edit_btn.setEnabled(False)
+        self.reset_manual_btn.setEnabled(False)
         self.statusBar().showMessage("Обработка...")
+        
+        # Передаем в рабочий поток текущие разделы (с учетом ручных правок)
+        sections_to_use = self.current_sections if self.has_manual_edits else None
         
         self.worker = SplitWorker(
             self.current_file,
             self.output_dir,
             settings,
-            mode=self.current_mode
+            mode=self.current_mode,
+            manual_sections=sections_to_use
         )
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
@@ -445,6 +506,8 @@ class MainWindow(QMainWindow):
             self.log_widget.add_message(f"Обработка завершена. Создано {len(created_files)} файлов.")
             message = f"Разбиение завершено!\nСоздано файлов: {len(created_files)}\nПапка: {self.output_dir}"
             self.manual_edit_btn.setEnabled(True)
+            if self.has_manual_edits:
+                self.reset_manual_btn.setEnabled(True)
         else:
             self.statusBar().showMessage(f"Готово! Очищенный текст сохранен")
             self.log_widget.add_message(f"Очистка завершена. Файл сохранен: {os.path.basename(created_files[0])}")
