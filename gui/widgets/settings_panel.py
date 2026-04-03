@@ -10,7 +10,8 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QCheckBox,
     QLabel, QLineEdit, QPushButton, QHBoxLayout,
     QListWidget, QListWidgetItem, QComboBox, QMessageBox,
-    QFileDialog, QSplitter
+    QFileDialog, QSplitter, QTextEdit, QSpinBox,
+    QStackedWidget, QRadioButton, QButtonGroup
 )
 from PyQt5.QtCore import pyqtSignal, Qt
 
@@ -30,42 +31,34 @@ class SettingsPanel(QWidget):
         """Инициализация интерфейса"""
         layout = QVBoxLayout(self)
         
-        # Группа: Маркеры разбиения
-        markers_group = QGroupBox("Маркеры разбиения")
-        markers_layout = QVBoxLayout(markers_group)
+        # Группа: Способ разбиения
+        split_method_group = QGroupBox("Способ разбиения")
+        split_method_layout = QVBoxLayout(split_method_group)
         
-        # Выбор предустановленного маркера
-        markers_layout.addWidget(QLabel("Предустановленные маркеры:"))
+        self.split_method_combo = QComboBox()
+        self.split_method_combo.addItem("По маркерам (regex)", "regex")
+        self.split_method_combo.addItem("По ручным меткам", "manual")
+        self.split_method_combo.addItem("По длине", "length")
+        self.split_method_combo.currentIndexChanged.connect(self.on_split_method_changed)
+        split_method_layout.addWidget(self.split_method_combo)
         
-        preset_layout = QHBoxLayout()
-        self.preset_combo = QComboBox()
-        self.preset_combo.addItem("Цифры с точкой (1., 2., ...)", r'^\s*(\d+)\.\s*')
-        self.preset_combo.addItem("Цифры с точкой и пробелом", r'^\s*(\d+)\.\s+')
-        self.preset_combo.addItem("Римские цифры (I., II., ...)", r'^\s*([IVX]+)\.\s*')
-        self.preset_combo.addItem("Буквы (А., Б., ...)", r'^\s*([А-Я])\.\s*')
-        self.preset_combo.addItem("Произвольный regex", r'')
-        self.preset_combo.currentIndexChanged.connect(self.on_preset_changed)
-        preset_layout.addWidget(self.preset_combo)
+        # Стек виджетов для разных методов
+        self.split_method_stack = QStackedWidget()
         
-        load_preset_btn = QPushButton("Применить")
-        load_preset_btn.clicked.connect(self.apply_preset)
-        preset_layout.addWidget(load_preset_btn)
+        # 1. Настройки для regex
+        regex_widget = self.create_regex_settings()
+        self.split_method_stack.addWidget(regex_widget)
         
-        markers_layout.addLayout(preset_layout)
+        # 2. Настройки для ручных меток
+        manual_widget = self.create_manual_settings()
+        self.split_method_stack.addWidget(manual_widget)
         
-        # Редактирование шаблона
-        markers_layout.addWidget(QLabel("Шаблон маркера (regex):"))
-        self.marker_pattern_edit = QLineEdit()
-        self.marker_pattern_edit.textChanged.connect(self.on_settings_changed)
-        markers_layout.addWidget(self.marker_pattern_edit)
+        # 3. Настройки для длины
+        length_widget = self.create_length_settings()
+        self.split_method_stack.addWidget(length_widget)
         
-        # Описание маркера
-        markers_layout.addWidget(QLabel("Описание:"))
-        self.marker_desc_edit = QLineEdit()
-        self.marker_desc_edit.textChanged.connect(self.on_settings_changed)
-        markers_layout.addWidget(self.marker_desc_edit)
-        
-        layout.addWidget(markers_group)
+        split_method_layout.addWidget(self.split_method_stack)
+        layout.addWidget(split_method_group)
         
         # Группа: Удаление содержимого
         brackets_group = QGroupBox("Удаление содержимого")
@@ -90,7 +83,6 @@ class SettingsPanel(QWidget):
         
         self.brackets_list = QListWidget()
         self.brackets_list.setMaximumHeight(120)
-        # Добавляем скобки по умолчанию
         item = QListWidgetItem("()")
         self.brackets_list.addItem(item)
         brackets_list_layout.addWidget(self.brackets_list)
@@ -110,7 +102,6 @@ class SettingsPanel(QWidget):
         brackets_list_layout.addLayout(brackets_buttons_layout)
         brackets_widget_layout.addLayout(brackets_list_layout)
         
-        # Поле для добавления новой пары
         add_layout = QHBoxLayout()
         add_layout.addWidget(QLabel("Добавить:"))
         self.new_bracket_pair = QLineEdit()
@@ -146,7 +137,6 @@ class SettingsPanel(QWidget):
         
         chars_widget_layout.addLayout(chars_buttons_layout)
         
-        # Поле для добавления символа
         char_add_layout = QHBoxLayout()
         char_add_layout.addWidget(QLabel("Символ:"))
         self.new_char = QLineEdit()
@@ -160,11 +150,8 @@ class SettingsPanel(QWidget):
         
         chars_widget_layout.addLayout(char_add_layout)
         
-        # Добавляем оба виджета в сплиттер
         splitter.addWidget(brackets_widget)
         splitter.addWidget(chars_widget)
-        
-        # Устанавливаем пропорции (1:1 - одинаково)
         splitter.setSizes([200, 200])
         
         brackets_layout.addWidget(splitter)
@@ -185,7 +172,7 @@ class SettingsPanel(QWidget):
         self.normalize_punctuation_cb.toggled.connect(self.on_settings_changed)
         cleaning_layout.addWidget(self.normalize_punctuation_cb)
         
-        self.remove_invisible_cb = QCheckBox("Удалять скрытые символы (невидимые, управляющие)")
+        self.remove_invisible_cb = QCheckBox("Удалять скрытые символы")
         self.remove_invisible_cb.setChecked(True)
         self.remove_invisible_cb.toggled.connect(self.on_settings_changed)
         cleaning_layout.addWidget(self.remove_invisible_cb)
@@ -214,7 +201,6 @@ class SettingsPanel(QWidget):
         profiles_group = QGroupBox("Профили")
         profiles_layout = QVBoxLayout(profiles_group)
         
-        # Выбор профиля
         profile_select_layout = QHBoxLayout()
         profile_select_layout.addWidget(QLabel("Загрузить профиль:"))
         
@@ -224,7 +210,6 @@ class SettingsPanel(QWidget):
         
         profiles_layout.addLayout(profile_select_layout)
         
-        # Кнопки управления профилями
         profile_buttons_layout = QHBoxLayout()
         
         self.save_profile_btn = QPushButton("Сохранить профиль")
@@ -241,8 +226,121 @@ class SettingsPanel(QWidget):
         
         layout.addStretch()
         
-        # Загружаем список профилей
         self.load_profiles_list()
+    
+    def create_regex_settings(self):
+        """Создание настроек для regex метода"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        layout.addWidget(QLabel("Предустановленные маркеры:"))
+        
+        preset_layout = QHBoxLayout()
+        self.preset_combo = QComboBox()
+        self.preset_combo.addItem("Цифры с точкой (1., 2., ...)", r'^\s*(\d+)\.\s*')
+        self.preset_combo.addItem("Цифры с точкой и пробелом", r'^\s*(\d+)\.\s+')
+        self.preset_combo.addItem("Римские цифры (I., II., ...)", r'^\s*([IVX]+)\.\s*')
+        self.preset_combo.addItem("Буквы (А., Б., ...)", r'^\s*([А-Я])\.\s*')
+        self.preset_combo.currentIndexChanged.connect(self.on_preset_changed)
+        preset_layout.addWidget(self.preset_combo)
+        
+        load_preset_btn = QPushButton("Применить")
+        load_preset_btn.clicked.connect(self.apply_preset)
+        preset_layout.addWidget(load_preset_btn)
+        
+        layout.addLayout(preset_layout)
+        
+        layout.addWidget(QLabel("Шаблон маркера (regex):"))
+        self.marker_pattern_edit = QLineEdit()
+        self.marker_pattern_edit.textChanged.connect(self.on_settings_changed)
+        layout.addWidget(self.marker_pattern_edit)
+        
+        layout.addWidget(QLabel("Описание:"))
+        self.marker_desc_edit = QLineEdit()
+        self.marker_desc_edit.textChanged.connect(self.on_settings_changed)
+        layout.addWidget(self.marker_desc_edit)
+        
+        return widget
+    
+    def create_manual_settings(self):
+        """Создание настроек для ручных меток"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        layout.addWidget(QLabel("Метки разделителей (по одной на строку):"))
+        self.markers_text = QTextEdit()
+        self.markers_text.setPlaceholderText("Пример:\n===\n---\nГлава\n***")
+        self.markers_text.setMaximumHeight(100)
+        self.markers_text.textChanged.connect(self.on_settings_changed)
+        layout.addWidget(self.markers_text)
+        
+        self.keep_markers_cb = QCheckBox("Сохранять метки в тексте")
+        self.keep_markers_cb.setChecked(False)
+        self.keep_markers_cb.toggled.connect(self.on_settings_changed)
+        layout.addWidget(self.keep_markers_cb)
+        
+        self.case_sensitive_cb = QCheckBox("Учитывать регистр")
+        self.case_sensitive_cb.setChecked(False)
+        self.case_sensitive_cb.toggled.connect(self.on_settings_changed)
+        layout.addWidget(self.case_sensitive_cb)
+        
+        return widget
+    
+    def create_length_settings(self):
+        """Создание настроек для разбиения по длине"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        unit_layout = QHBoxLayout()
+        unit_layout.addWidget(QLabel("Единица измерения:"))
+        self.length_unit_combo = QComboBox()
+        self.length_unit_combo.addItem("Символы", "chars")
+        self.length_unit_combo.addItem("Строки", "lines")
+        self.length_unit_combo.currentIndexChanged.connect(self.on_settings_changed)
+        unit_layout.addWidget(self.length_unit_combo)
+        layout.addLayout(unit_layout)
+        
+        length_layout = QHBoxLayout()
+        length_layout.addWidget(QLabel("Длина фрагмента:"))
+        self.length_value_spin = QSpinBox()
+        self.length_value_spin.setMinimum(100)
+        self.length_value_spin.setMaximum(1000000)
+        self.length_value_spin.setValue(5000)
+        self.length_value_spin.valueChanged.connect(self.on_settings_changed)
+        length_layout.addWidget(self.length_value_spin)
+        
+        self.length_unit_label = QLabel("символов")
+        length_layout.addWidget(self.length_unit_label)
+        layout.addLayout(length_layout)
+        
+        self.smart_split_cb = QCheckBox("Умное разбиение (не разрывать предложения)")
+        self.smart_split_cb.setChecked(True)
+        self.smart_split_cb.toggled.connect(self.on_settings_changed)
+        layout.addWidget(self.smart_split_cb)
+        
+        self.keep_paragraphs_cb = QCheckBox("Не разрывать абзацы")
+        self.keep_paragraphs_cb.setChecked(True)
+        self.keep_paragraphs_cb.toggled.connect(self.on_settings_changed)
+        layout.addWidget(self.keep_paragraphs_cb)
+        
+        return widget
+    
+    def on_split_method_changed(self, index):
+        """Обработчик изменения метода разбиения"""
+        self.split_method_stack.setCurrentIndex(index)
+        self.on_settings_changed()
+        
+        # Обновляем метку единицы измерения
+        if index == 2:  # length
+            self.update_length_unit_label()
+    
+    def update_length_unit_label(self):
+        """Обновление метки единицы измерения"""
+        unit = self.length_unit_combo.currentData()
+        if unit == 'chars':
+            self.length_unit_label.setText("символов")
+        else:
+            self.length_unit_label.setText("строк")
     
     def browse_output_dir(self):
         """Выбрать папку для результатов"""
@@ -272,7 +370,6 @@ class SettingsPanel(QWidget):
         """Добавить пару скобок"""
         new_pair = self.new_bracket_pair.text().strip()
         if new_pair and len(new_pair) == 2:
-            # Проверяем, нет ли уже такой пары
             items = [self.brackets_list.item(i).text() for i in range(self.brackets_list.count())]
             if new_pair not in items:
                 self.brackets_list.addItem(new_pair)
@@ -290,7 +387,6 @@ class SettingsPanel(QWidget):
         """Добавить символ для удаления"""
         new_char = self.new_char.text().strip()
         if new_char and len(new_char) == 1:
-            # Проверяем, нет ли уже такого символа
             items = [self.chars_list.item(i).text() for i in range(self.chars_list.count())]
             if new_char not in items:
                 self.chars_list.addItem(new_char)
@@ -304,6 +400,30 @@ class SettingsPanel(QWidget):
             self.chars_list.takeItem(current_row)
             self.on_settings_changed()
     
+    def get_split_method(self):
+        """Получить текущий метод разбиения и его настройки"""
+        method = self.split_method_combo.currentData()
+        result = {'method': method}
+        
+        if method == 'regex':
+            result['marker_pattern'] = self.marker_pattern_edit.text()
+            result['marker_description'] = self.marker_desc_edit.text()
+        
+        elif method == 'manual':
+            markers = self.markers_text.toPlainText().strip().split('\n')
+            markers = [m.strip() for m in markers if m.strip()]
+            result['markers'] = markers
+            result['keep_markers'] = self.keep_markers_cb.isChecked()
+            result['case_sensitive'] = self.case_sensitive_cb.isChecked()
+        
+        elif method == 'length':
+            result['length'] = self.length_value_spin.value()
+            result['unit'] = self.length_unit_combo.currentData()
+            result['smart'] = self.smart_split_cb.isChecked()
+            result['keep_paragraphs'] = self.keep_paragraphs_cb.isChecked()
+        
+        return result
+    
     def get_settings(self):
         """Получить текущие настройки"""
         bracket_pairs = []
@@ -314,9 +434,10 @@ class SettingsPanel(QWidget):
         for i in range(self.chars_list.count()):
             chars_to_remove.append(self.chars_list.item(i).text())
         
+        split_config = self.get_split_method()
+        
         return {
-            'marker_pattern': self.marker_pattern_edit.text(),
-            'marker_description': self.marker_desc_edit.text(),
+            'split_config': split_config,
             'remove_brackets': self.remove_brackets_cb.isChecked(),
             'bracket_pairs': bracket_pairs,
             'remove_spaces': self.remove_spaces_cb.isChecked(),
@@ -328,10 +449,6 @@ class SettingsPanel(QWidget):
     
     def set_settings(self, settings):
         """Установить настройки"""
-        if 'marker_pattern' in settings:
-            self.marker_pattern_edit.setText(settings['marker_pattern'])
-        if 'marker_description' in settings:
-            self.marker_desc_edit.setText(settings['marker_description'])
         if 'remove_brackets' in settings:
             self.remove_brackets_cb.setChecked(settings['remove_brackets'])
         if 'bracket_pairs' in settings:
@@ -351,13 +468,46 @@ class SettingsPanel(QWidget):
         if 'output_dir' in settings:
             self.output_dir_edit.setText(settings['output_dir'])
         
+        if 'split_config' in settings:
+            split_config = settings['split_config']
+            method = split_config.get('method', 'regex')
+            
+            if method == 'regex':
+                self.split_method_combo.setCurrentIndex(0)
+                if 'marker_pattern' in split_config:
+                    self.marker_pattern_edit.setText(split_config['marker_pattern'])
+                if 'marker_description' in split_config:
+                    self.marker_desc_edit.setText(split_config['marker_description'])
+            
+            elif method == 'manual':
+                self.split_method_combo.setCurrentIndex(1)
+                markers = split_config.get('markers', [])
+                self.markers_text.setPlainText('\n'.join(markers))
+                self.keep_markers_cb.setChecked(split_config.get('keep_markers', False))
+                self.case_sensitive_cb.setChecked(split_config.get('case_sensitive', False))
+            
+            elif method == 'length':
+                self.split_method_combo.setCurrentIndex(2)
+                self.length_value_spin.setValue(split_config.get('length', 5000))
+                
+                unit = split_config.get('unit', 'chars')
+                index = 0 if unit == 'chars' else 1
+                self.length_unit_combo.setCurrentIndex(index)
+                
+                self.smart_split_cb.setChecked(split_config.get('smart', True))
+                self.keep_paragraphs_cb.setChecked(split_config.get('keep_paragraphs', True))
+                self.update_length_unit_label()
+        
         self.on_settings_changed()
     
     def load_default_profile(self):
         """Загрузить профиль по умолчанию"""
         default_settings = {
-            'marker_pattern': r'^\s*(\d+)\.\s*',
-            'marker_description': 'Цифры с точкой (1., 2., ...)',
+            'split_config': {
+                'method': 'regex',
+                'marker_pattern': r'^\s*(\d+)\.\s*',
+                'marker_description': 'Цифры с точкой (1., 2., ...)'
+            },
             'remove_brackets': True,
             'bracket_pairs': ['()'],
             'remove_spaces': True,
@@ -384,7 +534,7 @@ class SettingsPanel(QWidget):
     
     def on_profile_selected(self, index):
         """Обработчик выбора профиля"""
-        if index > 0:  # Пропускаем первый элемент "-- Выберите профиль --"
+        if index > 0:
             profile_path = self.profile_combo.itemData(index)
             if profile_path and os.path.exists(profile_path):
                 try:
@@ -414,7 +564,6 @@ class SettingsPanel(QWidget):
             
             profile_path = os.path.join(self.profiles_dir, f"{profile_name}.json")
             
-            # Проверяем, существует ли уже такой профиль
             if os.path.exists(profile_path):
                 reply = QMessageBox.question(
                     self, "Профиль существует",
@@ -431,7 +580,6 @@ class SettingsPanel(QWidget):
                 
                 self.load_profiles_list()
                 
-                # Выбираем сохраненный профиль в списке
                 for i in range(self.profile_combo.count()):
                     if self.profile_combo.itemText(i) == profile_name:
                         self.profile_combo.setCurrentIndex(i)
@@ -447,7 +595,7 @@ class SettingsPanel(QWidget):
     def delete_profile(self):
         """Удалить профиль"""
         current_index = self.profile_combo.currentIndex()
-        if current_index > 0:  # Не удаляем заглушку
+        if current_index > 0:
             profile_name = self.profile_combo.currentText()
             profile_path = self.profile_combo.itemData(current_index)
             
@@ -467,18 +615,3 @@ class SettingsPanel(QWidget):
                     )
                 except Exception as e:
                     QMessageBox.warning(self, "Ошибка", f"Не удалось удалить профиль: {e}")
-    
-    def create_cleanup_profile(self):
-        """Создать профиль для агрессивной очистки"""
-        cleanup_settings = {
-            'marker_pattern': r'^\s*(\d+)\.\s*',
-            'marker_description': 'Цифры с точкой (1., 2., ...)',
-            'remove_brackets': True,
-            'bracket_pairs': ['()', '[]', '{}', '«»', '“”', '""', "''"],
-            'remove_spaces': True,
-            'normalize_punctuation': True,
-            'chars_to_remove': ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹', '⁰', '†', '‡', '*'],
-            'remove_invisible': True,
-            'output_dir': ''
-        }
-        return cleanup_settings

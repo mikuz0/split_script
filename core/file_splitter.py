@@ -14,16 +14,16 @@ class FileSplitter:
     def __init__(self):
         """Инициализация сплиттера"""
         self.text_processor = TextProcessor()
+        self.split_method = 'regex'
+        self.manual_markers = []
+        self.keep_manual_markers = False
+        self.manual_case_sensitive = False
+        self.length_value = 5000
+        self.length_unit = 'chars'
+        self.length_smart = True
+        self.length_keep_paragraphs = True
         
     def set_processor_config(self, settings=None, **kwargs):
-        """
-        Установка конфигурации процессора
-        
-        Args:
-            settings: словарь с настройками
-            **kwargs: отдельные параметры настройки
-        """
-        # Если передан словарь настроек
         if settings:
             if 'marker_pattern' in settings:
                 self.text_processor.set_marker_pattern(
@@ -42,34 +42,26 @@ class FileSplitter:
                 self.text_processor.set_chars_to_remove(settings['chars_to_remove'])
             if 'remove_invisible' in settings:
                 self.text_processor.set_remove_invisible(settings['remove_invisible'])
-        else:
-            # Если переданы отдельные параметры (для обратной совместимости)
-            if 'remove_brackets' in kwargs:
-                self.text_processor.set_remove_brackets(kwargs['remove_brackets'])
-            if 'bracket_pairs' in kwargs:
-                self.text_processor.set_bracket_pairs(kwargs['bracket_pairs'])
-            if 'marker_pattern' in kwargs:
-                self.text_processor.set_marker_pattern(
-                    kwargs['marker_pattern'],
-                    kwargs.get('marker_description', '')
-                )
+    
+    def set_split_config(self, method='regex', **kwargs):
+        self.split_method = method
+        
+        if method == 'manual':
+            self.manual_markers = kwargs.get('markers', [])
+            self.keep_manual_markers = kwargs.get('keep_markers', False)
+            self.manual_case_sensitive = kwargs.get('case_sensitive', False)
+        
+        elif method == 'length':
+            self.length_value = kwargs.get('length', 5000)
+            self.length_unit = kwargs.get('unit', 'chars')
+            self.length_smart = kwargs.get('smart', True)
+            self.length_keep_paragraphs = kwargs.get('keep_paragraphs', True)
     
     def load_file(self, filepath):
-        """
-        Загружает текст из файла с определением кодировки
-        
-        Args:
-            filepath: путь к файлу
-            
-        Returns:
-            текст файла или None в случае ошибки
-        """
         try:
-            # Пытаемся определить кодировку
             with open(filepath, 'rb') as f:
                 raw_data = f.read()
             
-            # Проверяем BOM и читаем в правильной кодировке
             if raw_data.startswith(codecs.BOM_UTF8):
                 encoding = 'utf-8-sig'
             elif raw_data.startswith(codecs.BOM_UTF16_LE):
@@ -77,7 +69,6 @@ class FileSplitter:
             elif raw_data.startswith(codecs.BOM_UTF16_BE):
                 encoding = 'utf-16-be'
             else:
-                # Пробуем распространенные кодировки
                 encodings = ['utf-8', 'windows-1251', 'cp1251', 'koi8-r']
                 for enc in encodings:
                     try:
@@ -87,9 +78,8 @@ class FileSplitter:
                     except UnicodeDecodeError:
                         continue
                 else:
-                    encoding = 'utf-8'  # по умолчанию
+                    encoding = 'utf-8'
             
-            # Читаем файл с определенной кодировкой
             with open(filepath, 'r', encoding=encoding) as f:
                 return f.read()
                 
@@ -97,124 +87,83 @@ class FileSplitter:
             raise Exception(f"Ошибка при чтении файла: {e}")
     
     def get_base_filename(self, filepath):
-        """
-        Получает базовое имя файла без расширения
-        
-        Args:
-            filepath: путь к файлу
-            
-        Returns:
-            имя файла без расширения
-        """
         filename = os.path.basename(filepath)
         base_name = os.path.splitext(filename)[0]
         return base_name
     
-    def split_text(self, text):
+    def split_text(self, text, clean_callback=None):
         """
-        Разбивает текст на разделы
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            список кортежей (номер, содержимое)
+        Разбивает текст на разделы в зависимости от выбранного метода
         """
-        matches = self.text_processor.find_markers(text)
-        sections = []
-        
-        for i, match in enumerate(matches):
-            # Номер раздела (из маркера)
-            section_num = match.group(1)
+        if self.split_method == 'manual':
+            sections = self.text_processor.split_by_manual_markers(
+                text,
+                self.manual_markers,
+                self.keep_manual_markers,
+                self.manual_case_sensitive,
+                clean_section=True,
+                clean_callback=clean_callback
+            )
+        elif self.split_method == 'length':
+            sections = self.text_processor.split_by_length(
+                text,
+                self.length_value,
+                self.length_unit,
+                self.length_smart,
+                self.length_keep_paragraphs,
+                clean_section=True,
+                clean_callback=clean_callback
+            )
+        else:
+            matches = self.text_processor.find_markers(text)
+            sections = []
             
-            # Начало раздела
-            start_pos = match.start()
-            
-            # Конец раздела
-            if i + 1 < len(matches):
-                end_pos = matches[i + 1].start()
-            else:
-                end_pos = len(text)
-            
-            # Извлекаем содержимое
-            raw_content = text[start_pos:end_pos]
-            
-            # Очищаем содержимое (с удалением маркеров)
-            cleaned_content = self.text_processor.clean_text_section(raw_content)
-            
-            sections.append((section_num, cleaned_content))
+            for i, match in enumerate(matches):
+                section_num = match.group(1)
+                start_pos = match.start()
+                
+                if i + 1 < len(matches):
+                    end_pos = matches[i + 1].start()
+                else:
+                    end_pos = len(text)
+                
+                raw_content = text[start_pos:end_pos]
+                cleaned_content = self.text_processor.clean_text_section(raw_content, clean_callback)
+                sections.append((section_num, cleaned_content))
         
         return sections
     
-    def clean_whole_file(self, text):
-        """
-        Очищает весь текст без разбиения (сохраняет маркеры)
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            очищенный текст
-        """
-        return self.text_processor.clean_whole_text(text)
+    def clean_whole_file(self, text, clean_callback=None):
+        return self.text_processor.clean_whole_text(text, clean_callback)
     
     def save_cleaned_file(self, cleaned_text, input_filepath, output_dir):
-        """
-        Сохраняет очищенный текст в файл
-        
-        Args:
-            cleaned_text: очищенный текст
-            input_filepath: путь к исходному файлу
-            output_dir: директория для сохранения
-            
-        Returns:
-            путь к сохраненному файлу
-        """
-        # Создаем директорию, если её нет
         os.makedirs(output_dir, exist_ok=True)
         
         base_name = self.get_base_filename(input_filepath)
         filename = f"{base_name}_cleaned.txt"
         filepath = os.path.join(output_dir, filename)
         
-        # Сохраняем файл в UTF-8 без BOM
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(cleaned_text)
         
         return filepath
     
     def save_sections(self, sections, input_filepath, output_dir, callback=None):
-        """
-        Сохраняет разделы в файлы (UTF-8 без BOM для совместимости с Windows)
-        
-        Args:
-            sections: список разделов
-            input_filepath: путь к исходному файлу
-            output_dir: директория для сохранения
-            callback: функция обратного вызова для обновления прогресса
-            
-        Returns:
-            список созданных файлов
-        """
-        # Создаем директорию, если её нет
         os.makedirs(output_dir, exist_ok=True)
         
         base_name = self.get_base_filename(input_filepath)
         created_files = []
         
         for i, (section_num, content) in enumerate(sections):
-            # Формируем имя файла: 001_имя.txt
             file_num = str(i + 1).zfill(3)
             filename = f"{file_num}_{base_name}.txt"
             filepath = os.path.join(output_dir, filename)
             
-            # Сохраняем файл в UTF-8 без BOM
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
             
             created_files.append(filepath)
             
-            # Вызываем callback для обновления прогресса
             if callback:
                 callback(i + 1, len(sections), filepath)
         

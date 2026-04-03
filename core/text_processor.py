@@ -16,66 +16,46 @@ class TextProcessor:
         self.marker_pattern = r'^\s*(\d+)\.\s*'
         self.marker_description = "Цифры с точкой (1., 2., ...)"
         self.remove_brackets = True
-        self.bracket_pairs = ['()']  # Список пар скобок для удаления
+        self.bracket_pairs = ['()']
         self.remove_spaces = True
         self.normalize_punctuation = True
-        self.chars_to_remove = []  # Список символов для удаления
-        self.remove_invisible = True  # Удалять скрытые символы
+        self.chars_to_remove = []
+        self.remove_invisible = True
         
     def set_marker_pattern(self, pattern, description=""):
-        """Установить шаблон маркера"""
         self.marker_pattern = pattern
         self.marker_description = description
     
     def get_marker_pattern(self):
-        """Получить шаблон маркера"""
         return self.marker_pattern
     
     def get_marker_description(self):
-        """Получить описание маркера"""
         return self.marker_description
     
     def set_remove_brackets(self, remove):
-        """Установить флаг удаления скобок"""
         self.remove_brackets = remove
     
     def set_bracket_pairs(self, pairs):
-        """Установить список пар скобок"""
         self.bracket_pairs = pairs
     
     def set_remove_spaces(self, remove):
-        """Установить флаг удаления лишних пробелов"""
         self.remove_spaces = remove
     
     def set_normalize_punctuation(self, normalize):
-        """Установить флаг нормализации знаков препинания"""
         self.normalize_punctuation = normalize
     
     def set_chars_to_remove(self, chars):
-        """Установить список символов для удаления"""
         self.chars_to_remove = chars
     
     def set_remove_invisible(self, remove):
-        """Установить флаг удаления скрытых символов"""
         self.remove_invisible = remove
     
     def remove_parentheses_content(self, text):
-        """
-        Удаляет содержимое в указанных скобках
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            текст с удаленным содержимым в скобках
-        """
         result = text
-        
         for pair in self.bracket_pairs:
             if len(pair) == 2:
                 open_bracket = pair[0]
                 close_bracket = pair[1]
-                # Экранируем специальные символы regex
                 open_bracket_escaped = re.escape(open_bracket)
                 close_bracket_escaped = re.escape(close_bracket)
                 pattern = re.compile(
@@ -83,74 +63,37 @@ class TextProcessor:
                     re.DOTALL
                 )
                 result = pattern.sub('', result)
-        
         return result
     
     def remove_specific_chars(self, text):
-        """
-        Удаляет указанные символы из текста
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            текст с удаленными символами
-        """
         if not self.chars_to_remove:
             return text
-        
         for char in self.chars_to_remove:
             if char:
                 text = text.replace(char, '')
-        
         return text
     
     def remove_number_markers(self, text):
-        """
-        Удаляет маркеры из начала и конца текста
-        
-        Args:
-            text: текст раздела
-            
-        Returns:
-            текст с удаленными маркерами
-        """
-        # Удаляем маркер в начале текста
         pattern_start = re.compile(self.marker_pattern)
         text = pattern_start.sub('', text)
-        
-        # Удаляем цифру с точкой в конце текста, но оставляем саму точку
         pattern_end = re.compile(r'\s*\d+\.\s*$')
         text = pattern_end.sub('.', text)
-        
-        # Если после замены получилось две точки подряд, заменяем на одну
         text = re.sub(r'\.\.', '.', text)
-        
         return text
     
     def get_invisible_chars_info(self, text):
-        """
-        Анализирует текст на наличие скрытых и нестандартных символов
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            словарь с информацией о найденных символах
-        """
         invisible_info = {
             'has_invisible': False,
             'chars': {},
             'samples': []
         }
         
-        # Определение невидимых и специальных символов
         invisible_categories = {
-            'bom': r'[\uFEFF]',  # BOM (Byte Order Mark)
-            'control': r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]',  # Управляющие символы
-            'special_spaces': r'[\u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u3000]',  # Специальные пробелы
-            'zero_width': r'[\u200B\u200C\u200D\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2060]',  # Нулевой ширины
-            'soft_hyphen': r'[\u00AD]',  # Мягкий перенос
+            'bom': r'[\uFEFF]',
+            'control': r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]',
+            'special_spaces': r'[\u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u3000]',
+            'zero_width': r'[\u200B\u200C\u200D\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2060]',
+            'soft_hyphen': r'[\u00AD]',
         }
         
         for category, pattern in invisible_categories.items():
@@ -158,7 +101,6 @@ class TextProcessor:
             if matches:
                 invisible_info['has_invisible'] = True
                 invisible_info['chars'][category] = len(matches)
-                # Сохраняем примеры (не более 3)
                 samples = list(set(matches))[:3]
                 for sample in samples:
                     try:
@@ -177,23 +119,11 @@ class TextProcessor:
         return invisible_info
     
     def remove_invisible_chars(self, text, log_callback=None):
-        """
-        Удаление скрытых и невидимых символов
-        
-        Args:
-            text: исходный текст
-            log_callback: функция для логирования обнаруженных символов
-            
-        Returns:
-            очищенный текст
-        """
         if not self.remove_invisible:
             return text
         
-        # Получаем информацию о скрытых символах до удаления
         invisible_info = self.get_invisible_chars_info(text)
         
-        # Логируем найденные символы
         if log_callback and invisible_info['has_invisible']:
             log_callback(f"Обнаружены скрытые символы:")
             for sample in invisible_info['samples']:
@@ -201,170 +131,229 @@ class TextProcessor:
             for category, count in invisible_info['chars'].items():
                 log_callback(f"  {category}: {count} символов")
         
-        # 1. Удаляем BOM (самый первый символ)
         text = text.replace('\uFEFF', '')
         
-        # 2. Замена специальных пробелов на обычные (ДО нормализации)
         special_spaces = {
-            '\u2000': ' ',  # en quad
-            '\u2001': ' ',  # em quad
-            '\u2002': ' ',  # en space
-            '\u2003': ' ',  # em space
-            '\u2004': ' ',  # three-per-em space
-            '\u2005': ' ',  # four-per-em space
-            '\u2006': ' ',  # six-per-em space
-            '\u2007': ' ',  # figure space
-            '\u2008': ' ',  # punctuation space
-            '\u2009': ' ',  # thin space
-            '\u200A': ' ',  # hair space
-            '\u202F': ' ',  # narrow no-break space
-            '\u205F': ' ',  # medium mathematical space
-            '\u3000': ' ',  # ideographic space
-            '\u00A0': ' ',  # неразрывный пробел (NBSP)
+            '\u2000': ' ', '\u2001': ' ', '\u2002': ' ', '\u2003': ' ',
+            '\u2004': ' ', '\u2005': ' ', '\u2006': ' ', '\u2007': ' ',
+            '\u2008': ' ', '\u2009': ' ', '\u200A': ' ', '\u202F': ' ',
+            '\u205F': ' ', '\u3000': ' ', '\u00A0': ' '
         }
         for special, normal in special_spaces.items():
             if special in text:
                 text = text.replace(special, normal)
         
-        # 3. Нормализация Юникода (NFKC - совместимая композиция)
         text = unicodedata.normalize('NFKC', text)
-        
-        # 4. Удаление управляющих символов (кроме \n, \r, \t)
         text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
         
-        # 5. Удаление невидимых символов
         invisible_chars = [
-            '\u200B',  # zero width space
-            '\u200C',  # zero width non-joiner
-            '\u200D',  # zero width joiner
-            '\u200E',  # left-to-right mark
-            '\u200F',  # right-to-left mark
-            '\u202A',  # left-to-right embedding
-            '\u202B',  # right-to-left embedding
-            '\u202C',  # pop directional formatting
-            '\u202D',  # left-to-right override
-            '\u202E',  # right-to-left override
-            '\u2060',  # word joiner
-            '\u00AD',  # soft hyphen
+            '\u200B', '\u200C', '\u200D', '\u200E', '\u200F',
+            '\u202A', '\u202B', '\u202C', '\u202D', '\u202E',
+            '\u2060', '\u00AD'
         ]
         for char in invisible_chars:
             if char in text:
                 text = text.replace(char, '')
         
-        # 6. Дополнительная чистка: удаляем лишние пробелы, которые могли появиться
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
         
         return text
     
     def clean_text(self, text):
-        """
-        Очищает текст: удаляет лишние пробелы и нормализует знаки препинания
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            очищенный текст
-        """
-        # Удаляем лишние пробелы
         if self.remove_spaces:
             text = re.sub(r'\s+', ' ', text)
         
-        # Нормализуем знаки препинания
         if self.normalize_punctuation:
-            # Удаляем пробелы перед знаками препинания
             text = re.sub(r'\s+([,\.;:!?])', r'\1', text)
-            # Добавляем пробел после знаков препинания (если нет)
             text = re.sub(r'([,\.;:!?])([^\s])', r'\1 \2', text)
         
-        # Удаляем пробелы в начале и конце
         text = text.strip()
-        
         return text
     
     def clean_text_section(self, text, log_callback=None):
-        """
-        Полная очистка текстового раздела
-        Правильная последовательность:
-        0. Удаление скрытых символов (самое первое)
-        1. Удаление содержимого в скобках (структурная очистка)
-        2. Удаление маркеров (удаление служебной информации)
-        3. Удаление указанных символов (финальная чистка)
-        4. Очистка текста (пробелы и пунктуация)
-        
-        Args:
-            text: текст раздела
-            log_callback: функция для логирования
-            
-        Returns:
-            очищенный текст
-        """
-        # Шаг 0: Удаление скрытых символов (самое первое)
         text = self.remove_invisible_chars(text, log_callback)
-        
-        # Шаг 1: Удаляем содержимое в скобках (структурная очистка)
         if self.remove_brackets:
             text = self.remove_parentheses_content(text)
-        
-        # Шаг 2: Удаляем маркеры (удаление служебной информации)
         text = self.remove_number_markers(text)
-        
-        # Шаг 3: Удаляем указанные символы (финальная чистка)
         text = self.remove_specific_chars(text)
-        
-        # Шаг 4: Очищаем текст (пробелы и пунктуация)
         text = self.clean_text(text)
-        
         return text
     
     def clean_whole_text(self, text, log_callback=None):
-        """
-        Очистка всего текста без разбиения на разделы
-        (не удаляет маркеры, только скобки, символы и пробелы)
-        
-        Args:
-            text: исходный текст
-            log_callback: функция для логирования
-            
-        Returns:
-            очищенный текст
-        """
-        # Шаг 0: Удаление скрытых символов
         text = self.remove_invisible_chars(text, log_callback)
-        
-        # Шаг 1: Удаляем содержимое в скобках
         if self.remove_brackets:
             text = self.remove_parentheses_content(text)
-        
-        # Шаг 2: Удаляем указанные символы
         text = self.remove_specific_chars(text)
-        
-        # Шаг 3: Очищаем текст (пробелы и пунктуация)
         text = self.clean_text(text)
-        
         return text
     
     def find_markers(self, text):
-        """
-        Находит все маркеры в тексте
-        
-        Args:
-            text: исходный текст
-            
-        Returns:
-            список найденных маркеров
-        """
         pattern = re.compile(self.marker_pattern, re.MULTILINE)
         return list(pattern.finditer(text))
     
-    def get_profile(self):
+    def split_by_manual_markers(self, text, markers, keep_markers=False, case_sensitive=False, clean_section=True, clean_callback=None):
         """
-        Получить текущий профиль настроек
+        Разбиение текста по ручным меткам.
+        При keep_markers=True метка сохраняется в начале следующей секции,
+        а не выделяется в отдельный файл.
         
+        Args:
+            text: исходный текст
+            markers: список меток-разделителей
+            keep_markers: сохранять ли метки в тексте
+            case_sensitive: учитывать ли регистр
+            clean_section: применять ли очистку к секциям
+            clean_callback: функция для логирования при очистке
+            
         Returns:
-            словарь с настройками
+            список секций
         """
+        if not markers:
+            section_text = text.strip()
+            if clean_section:
+                section_text = self.clean_text_section(section_text, clean_callback)
+            return [(1, section_text)]
+        
+        sections = []
+        current_pos = 0
+        sorted_markers = sorted(markers, key=len, reverse=True)
+        escaped_markers = [re.escape(m) for m in sorted_markers]
+        
+        if case_sensitive:
+            pattern = re.compile('|'.join(escaped_markers), re.MULTILINE)
+        else:
+            pattern = re.compile('|'.join(escaped_markers), re.MULTILINE | re.IGNORECASE)
+        
+        matches = list(pattern.finditer(text))
+        
+        if not matches:
+            section_text = text.strip()
+            if clean_section:
+                section_text = self.clean_text_section(section_text, clean_callback)
+            return [(1, section_text)]
+        
+        marker_positions = []
+        for match in matches:
+            marker_positions.append({
+                'start': match.start(),
+                'end': match.end(),
+                'text': match.group(0)
+            })
+        
+        section_start = 0
+        section_num = 1
+        
+        for i, marker in enumerate(marker_positions):
+            if section_start < marker['start']:
+                section_text = text[section_start:marker['start']].strip()
+                if section_text:
+                    if clean_section:
+                        section_text = self.clean_text_section(section_text, clean_callback)
+                    sections.append((section_num, section_text))
+                    section_num += 1
+            
+            if keep_markers:
+                section_start = marker['start']
+            else:
+                section_start = marker['end']
+        
+        if section_start < len(text):
+            section_text = text[section_start:].strip()
+            if section_text:
+                if clean_section:
+                    section_text = self.clean_text_section(section_text, clean_callback)
+                sections.append((section_num, section_text))
+        
+        if not sections:
+            section_text = text.strip()
+            if clean_section:
+                section_text = self.clean_text_section(section_text, clean_callback)
+            return [(1, section_text)]
+        
+        return sections
+    
+    def split_by_length(self, text, length, unit='chars', smart=True, keep_paragraphs=True, clean_section=True, clean_callback=None):
+        if not text or length <= 0:
+            section_text = text.strip()
+            if clean_section:
+                section_text = self.clean_text_section(section_text, clean_callback)
+            return [(1, section_text)]
+        
+        if unit == 'lines':
+            lines = text.split('\n')
+            sections = []
+            current_section = []
+            current_count = 0
+            
+            for line in lines:
+                current_count += 1
+                current_section.append(line)
+                
+                if current_count >= length:
+                    section_text = '\n'.join(current_section).strip()
+                    if clean_section:
+                        section_text = self.clean_text_section(section_text, clean_callback)
+                    sections.append((len(sections) + 1, section_text))
+                    current_section = []
+                    current_count = 0
+            
+            if current_section:
+                section_text = '\n'.join(current_section).strip()
+                if clean_section:
+                    section_text = self.clean_text_section(section_text, clean_callback)
+                sections.append((len(sections) + 1, section_text))
+            
+            return sections
+        
+        else:
+            sections = []
+            start = 0
+            
+            while start < len(text):
+                end = min(start + length, len(text))
+                
+                if smart and end < len(text):
+                    new_end = self.find_nearest_sentence_end(text, end, 'backward')
+                    if new_end > start:
+                        end = new_end
+                
+                if keep_paragraphs and end < len(text):
+                    paragraph_end = text.rfind('\n', start, end)
+                    if paragraph_end > start + length // 2:
+                        end = paragraph_end + 1
+                
+                section_text = text[start:end].strip()
+                if section_text:
+                    if clean_section:
+                        section_text = self.clean_text_section(section_text, clean_callback)
+                    sections.append((len(sections) + 1, section_text))
+                
+                start = end
+            
+            return sections
+    
+    def find_nearest_sentence_end(self, text, position, direction='forward'):
+        sentence_ends = ['.', '!', '?', ':', ';']
+        
+        if direction == 'forward':
+            for i in range(position, min(position + 500, len(text))):
+                if i < len(text) and text[i] in sentence_ends:
+                    if i + 1 < len(text) and text[i + 1] == ' ':
+                        return i + 1
+                    elif i + 1 >= len(text):
+                        return i
+        else:
+            for i in range(position, max(0, position - 500), -1):
+                if i > 0 and text[i] in sentence_ends:
+                    if i + 1 < len(text) and text[i + 1] == ' ':
+                        return i + 1
+                    else:
+                        return i
+        
+        return position
+    
+    def get_profile(self):
         return {
             'marker_pattern': self.marker_pattern,
             'marker_description': self.marker_description,
@@ -377,12 +366,6 @@ class TextProcessor:
         }
     
     def load_profile(self, profile):
-        """
-        Загрузить профиль настроек
-        
-        Args:
-            profile: словарь с настройками
-        """
         if 'marker_pattern' in profile:
             self.marker_pattern = profile['marker_pattern']
         if 'marker_description' in profile:
